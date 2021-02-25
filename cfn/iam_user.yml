@@ -8,7 +8,7 @@ Resources:
     Properties:
       UserName: "soracom-funnel-user"
 
-  # デプロイ用のIAMユーザに付与するIAMポリシー（AssumeRoleできる）
+  # IAMユーザに付与するIAMポリシー
   SoracomFunnelUserPolicy:
     Type: AWS::IAM::Policy
     Properties:
