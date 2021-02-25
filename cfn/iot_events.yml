@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: IoT Events for SORACOM GPS Multiunit Notify Battery Low
+
+Resources:
+  SoracomGpsMultiunitTopicRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: soracom_gps_multiunit_topic_rule
+      TopicRulePayload:
+        AwsIotSqlVersion: "2016-03-23"
+        RuleDisabled: false
+        Sql: >-
+          SELECT
+            topic(3) as imsi, payloads.bat
+          FROM
+            'soracom/gps-multiunit/+'
+          WHERE
+            payloads.type <> -1
+        Actions:
+          - IotEvents:
+              InputName: !Ref SoracomGpsMultiunitEventsInput
+              RoleArn: !GetAtt SoracomGpsMultiunitTopicRuleRole.Arn
+
+  SoracomGpsMultiunitNotifyBatteryTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: sample@example.com
+          Protocol: email
+
+  SoracomGpsMultiunitTopicRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: soracom-gps-multiunit-topic-rule-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSIoTEventsFullAccess
+
+  SoracomGpsMultiunitEventsInput:
+    Type: AWS::IoTEvents::Input
+    Properties:
+      InputName: SoracomGpsMultiunitInputData
+      InputDefinition:
+        Attributes:
+          - JsonPath: imsi
+          - JsonPath: bat
+
+  SoracomGpsMultiunitBatteryDetectorModel:
+    Type: AWS::IoTEvents::DetectorModel
+    Properties:
+      DetectorModelName: soracom-gps-multiunit-battery-detector-model
+      Key: imsi
+      EvaluationMethod: BATCH
+      RoleArn: !GetAtt SoracomGpsMultiunitBatteryDetectorModelRole.Arn
+      DetectorModelDefinition:
+        InitialStateName: BatteryHigh
+        States:
+          - StateName: BatteryHigh
+            OnInput:
+              TransitionEvents:
+                - EventName: to_battery_low
+                  NextState: BatteryLow
+                  Condition: $input.SoracomGpsMultiunitInputData.bat == 1
+          - StateName: BatteryLow
+            OnEnter:
+              Events:
+                - EventName: send-mail-to-battery-low
+                  Actions:
+                    - Sns:
+                        TargetArn: !Ref SoracomGpsMultiunitNotifyBatteryTopic
+                        Payload:
+                          Type: STRING
+                          ContentExpression: "'バッテリーが低残量になりました。対象デバイス: ${$input.SoracomGpsMultiunitInputData.imsi}'"
+            OnInput:
+              TransitionEvents:
+                - EventName: to_battery_high
+                  NextState: BatteryHigh
+                  Condition: $input.SoracomGpsMultiunitInputData.bat == 3
+            OnExit:
+              Events:
+                - EventName: send-mail-to-battery-high
+                  Actions:
+                    - Sns:
+                        TargetArn: !Ref SoracomGpsMultiunitNotifyBatteryTopic
+                        Payload:
+                          Type: STRING
+                          ContentExpression: "'バッテリー残量が復旧しました。。対象デバイス: ${$input.SoracomGpsMultiunitInputData.imsi}'"
+
+  SoracomGpsMultiunitBatteryDetectorModelRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: soracom-gps-multiunit-battery-detector-model-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iotevents.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+
+  # SoracomGpsMultiunitBatteryDetectorModelLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub /aws/iotevents/${SoracomGpsMultiunitBatteryDetectorModel}

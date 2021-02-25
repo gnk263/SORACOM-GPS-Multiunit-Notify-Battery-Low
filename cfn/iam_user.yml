@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: IAM User for SORACOM Funnel
+
+Resources:
+  # SORACOM Funnel用のIAMユーザ
+  SoracomFunnelUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: "soracom-funnel-user"
+
+  # デプロイ用のIAMユーザに付与するIAMポリシー（AssumeRoleできる）
+  SoracomFunnelUserPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "soracom-funnel-user-policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "iot:Publish"
+            Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/soracom/gps-multiunit/*"
+      Users:
+        - !Ref SoracomFunnelUser
